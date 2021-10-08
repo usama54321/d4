@@ -114,8 +114,8 @@ def main(_):
     test_num_steps = test_seq_len * 8 + 6
     dev_num_steps = dev_seq_len * 8 + 6
 
-    train_stack_size = train_seq_len * 3 + 10
-    test_stack_size = test_seq_len * 3 + 10
+    train_stack_size = 22#train_seq_len * 3 + 10
+    test_stack_size = 22#test_seq_len * 3 + 10
 
     FLAGS.train_num_steps = (train_num_steps if FLAGS.train_num_steps == -1
                              else FLAGS.train_num_steps)
@@ -154,7 +154,7 @@ def main(_):
                              )
 
     model = NAMSeq2Seq(sketch, d4_params, train_params, test_params,
-                       debug=False,
+                       debug=True,
                        adjust_min_return_width=True,
                        argmax_pointers=True,
                        argmax_stacks=True,
@@ -185,16 +185,17 @@ def main(_):
 
     best = 0.0
     with tf.Session() as sess:
+        #model.load_model(sess, "./tmp/add/checkpoints/{0}/".format(FLAGS.id))
         summary_writer = tf.train.SummaryWriter(SUMMARY_LOG_DIR + "/" + FLAGS.id,
                                                 tf.get_default_graph())
         sess.run(tf.initialize_all_variables())
 
         # run max_epochs times
-
         print("epoch\titer\tloss\taccuracy\tpartial accuracy")
 
         stop_early = False
         epoch = 0
+        custom_grads = []
         while epoch < FLAGS.max_epochs and (not stop_early):
             epoch += 1
 
@@ -202,8 +203,16 @@ def main(_):
             for i in range(train_batcher._batch_number):
                 batch = train_batcher.next_batch()
 
-                _, loss, summaries, global_step = model.run_train_step(sess, batch, epoch)
+                #,custom_g,_
+                loss, summaries, global_step = model.run_train_step(sess, batch, epoch, [])
+                #print("Printing grads")
+                """
+                if len(custom_grads) != 0:
+                    custom_grads += custom_g[0]
+                else:
+                    custom_grads = custom_g[0]
 
+                """
                 summary_writer.add_summary(summaries, global_step)
 
                 total_loss += loss

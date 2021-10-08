@@ -39,6 +39,7 @@ class NAMSeq2Seq:
 
         self.sketch = sketch
 
+        self._test = None
         self.stack_size = d4_params.stack_size
         self.value_size = d4_params.value_size
         self.batch_size = d4_params.batch_size
@@ -128,12 +129,29 @@ class NAMSeq2Seq:
             optimizer = tf.train.AdamOptimizer(self.learning_rate)
             vars = tf.trainable_variables()
             grads_and_vars = optimizer.compute_gradients(self._loss, vars)
-
+            """
+            test =  tf.gradients(self._loss, self.interpreter.init_data_stack_placeholder)
+            test =  self.grad_add_noise_custom(test, self._grad_noise_scale(self.epoch))
+            test = self.grad_clip_by_norm_custom(test, self.max_grad_norm)
+            """
             grads_and_vars = self.grad_add_noise(grads_and_vars, self._grad_noise_scale(self.epoch))
             grads_and_vars = self.grad_clip_by_norm(grads_and_vars, self.max_grad_norm)
             # print(grads_and_vars)
+            #self._test = test
             self._grads_and_vars = grads_and_vars
             self._train_op = optimizer.apply_gradients(grads_and_vars, global_step=self.global_step)
+
+    @staticmethod
+    def grad_add_noise_custom(grads, scale):
+        with tf.name_scope("grad_add_noise"):
+            noisy_grads = []
+            for grad in grads:
+                if isinstance(grad, tf.Tensor):
+                    noisy_grads.append(grad + tf.truncated_normal(tf.shape(grad)) * scale)
+                else:
+                    noisy_grads.append(grad)
+            return noisy_grads
+
 
     @staticmethod
     def grad_add_noise(grads_and_vars, scale):
@@ -147,6 +165,11 @@ class NAMSeq2Seq:
                     noisy_grads.append(grad)
             return list(zip(noisy_grads, vars))
 
+    @staticmethod
+    def grad_clip_by_norm_custom(grads, norm):
+        with tf.name_scope("grad_clip_by_norm"):
+            clipped_grads, _ = tf.clip_by_global_norm(grads, norm)
+            return clipped_grads
     @staticmethod
     def grad_clip_by_norm(grads_and_vars, norm):
         with tf.name_scope("grad_clip_by_norm"):
@@ -176,20 +199,48 @@ class NAMSeq2Seq:
         if self.debug:
             print('Building complete')
 
-    def run_train_step(self, sess, data_batch: SeqDataset, epoch):
+    def run_train_step(self, sess, data_batch: SeqDataset, epoch, custom_grads):
 
         self.epoch.assign(epoch)
 
         # feeds
         feed_in = self._dsm_loss.current_feed_dict()
-        feed_out = [self._train_op, self._loss, self._summaries, self.global_step]
+        feed_out = [self._loss, self._summaries, self.global_step]#, self._test, self.interpreter.init_data_stack_variable] #self._train_op
 
         # feed the stack and the target stack
         for j in range(self.batch_size):
             self.interpreter.load_stack(data_batch.input_seq[j], j, last_float=False)
+            old = self.interpreter.init_data_stack_value[:,:,j].copy()
+            if (len(custom_grads) > 0 ):
+                #print("changing")
+                assert False
+                self.interpreter.init_data_stack_value -= custom_grads
+                self.interpreter.init_data_stack_value[:,4:,j].fill(0.0)
+                """
+                print("added grads")
+                normalizing = self.interpreter.init_data_stack_value[:,:,j]
+                print(normalizing)
+                normalizing = normalizing * normalizing
+                print("multiplied", normalizing)
+                summation = normalizing.sum(axis = 0)
+                print("summation", summation)
+                summation = np.sqrt(summation)
+                print("normalized", summation)
+                self.interpreter.init_data_stack_value[:,:,j] = self.interpreter.init_data_stack_value[:,:,j]/summation
+                """
+            #normalize them again?
+            #summation = self.interpreter.init_data_stack_value[:,:,j].sum(axis = 1)
+            #self.interpreter.init_data_stack_value[:,:,j] = self.interpreter.init_data_stack_value[:,:,j]/summation[:,np.newaxis]
+            #new = self.interpreter.init_data_stack_value[:,:,j]
+            #print("old", old)
+            #print("new", new)
+            #print(np.argmax(old, 0))
+            #print(np.argmax(new, 0))
+            
             self._dsm_loss.load_target_stack(data_batch.target_seq[j], j)
 
-        return sess.run(feed_out, feed_dict=feed_in)
+        data = sess.run(feed_out, feed_dict=feed_in)
+        return data
 
     def run_eval_step(self, sess, dataset: SeqDataset, max_steps):
 
