@@ -29,6 +29,7 @@ np.set_printoptions(linewidth=20000, precision=2, suppress=True, threshold=np.na
 SUMMARY_LOG_DIR = "./tmp/add/summaries"
 
 # choose add - learning rate 0.05
+tf.app.flags.DEFINE_integer("abduce_inputs", False, "Abduce")
 tf.app.flags.DEFINE_integer("batch_size", 128, "Batch size")
 tf.app.flags.DEFINE_float("learning_rate", 0.01, "Learning rate")
 
@@ -200,22 +201,35 @@ def main(_):
             epoch += 1
 
             total_loss = 0.0
-            for i in range(train_batcher._batch_number):
-                batch = train_batcher.next_batch()
 
-                #,custom_g,_
-                loss, summaries, global_step = model.run_train_step(sess, batch, epoch, [])
-                #print("Printing grads")
-                """
-                if len(custom_grads) != 0:
-                    custom_grads += custom_g[0]
-                else:
-                    custom_grads = custom_g[0]
+            image = None
+            if FLAGS.abduce_inputs:
+                #we only have one input sample. no batching?
+                if image == None:
+                    image = None#get data
+                loss, summaries, global_step, image = model.run_train_step_for_abduction(sess, data, epoch, []) #feed updated image on each input loop
 
-                """
                 summary_writer.add_summary(summaries, global_step)
 
                 total_loss += loss
+
+            else:
+                for i in range(train_batcher._batch_number):
+                    batch = train_batcher.next_batch()
+
+                    #,custom_g,_
+                    loss, summaries, global_step = model.run_train_step(sess, batch, epoch, [])
+                    #print("Printing grads")
+                    """
+                    if len(custom_grads) != 0:
+                        custom_grads += custom_g[0]
+                    else:
+                        custom_grads = custom_g[0]
+
+                    """
+                    summary_writer.add_summary(summaries, global_step)
+
+                    total_loss += loss
 
             loss_per_epoch = total_loss / (train_batcher._batch_number * train_batcher._batch_size)
             print("train\t{0}\tl:{1}\t\t".format(epoch, loss_per_epoch))
@@ -224,7 +238,7 @@ def main(_):
 
                 accuracy, partial_accuracy = model.run_eval_step(sess, dataset_dev, dev_num_steps)
                 print("dev\t{0}\ta:{1}\tpa:{2}".format(epoch, accuracy, partial_accuracy))
-                
+
                 if partial_accuracy > best:
                     model.save_model(sess, directory_save + "model.checkpoint",
                                      global_step=global_step)

@@ -128,6 +128,8 @@ class NAMSeq2Seq:
         with tf.name_scope("optimiser"):
             optimizer = tf.train.AdamOptimizer(self.learning_rate)
             vars = tf.trainable_variables()
+            for var in vars:
+                print(var.name)
             grads_and_vars = optimizer.compute_gradients(self._loss, vars)
             """
             test =  tf.gradients(self._loss, self.interpreter.init_data_stack_placeholder)
@@ -199,10 +201,23 @@ class NAMSeq2Seq:
         if self.debug:
             print('Building complete')
 
-    def run_train_step(self, sess, data_batch: SeqDataset, epoch, custom_grads):
+    def run_train_step_for_abduction(self, sess, data_batch: SeqDataset, epoch, custom_grads):
+        self.epoch.assign(epoch)
+        feed_in = self._dsm_loss.current_feed_dict()
+        feed_out = [self._loss, self._summaries, self.global_step, self._updated_input]#, self._test, self.interpreter.init_data_stack_variable] #self._train_op
+
+        assert self.batch_size == 1
+
+        self._dsm_loss.load_target_stack(data_batch.target_seq[j], j)
+
+        data = sess.run(feed_out, feed_dict=feed_in)
+        return data
+
+    def run_train_step(self, sess, input: SeqDataset, epoch):
 
         self.epoch.assign(epoch)
 
+        self.interpreter.load_stack(data_batch.input_seq[0], 0, last_float=False)
         # feeds
         feed_in = self._dsm_loss.current_feed_dict()
         feed_out = [self._loss, self._summaries, self.global_step]#, self._test, self.interpreter.init_data_stack_variable] #self._train_op
@@ -236,7 +251,6 @@ class NAMSeq2Seq:
             #print("new", new)
             #print(np.argmax(old, 0))
             #print(np.argmax(new, 0))
-            
             self._dsm_loss.load_target_stack(data_batch.target_seq[j], j)
 
         data = sess.run(feed_out, feed_dict=feed_in)
