@@ -303,6 +303,9 @@ class SimpleInterpreter:
                     tf.float32, (value_size, stack_size, batch_size), name="D")
                 self.init_data_stack_value = np.zeros([value_size, stack_size, batch_size])
 
+                self.init_data_stack_variable = tf.Variable(np.zeros([value_size, stack_size, batch_size]), name="custom_var", trainable=True)
+                self.init_data_stack_variable.assign(self.init_data_stack_value)
+
                 self.init_data_stack_pointer_placeholder = tf.placeholder(
                     tf.float32, (stack_size, batch_size), name="DP")
                 # TOS initialised to the last element
